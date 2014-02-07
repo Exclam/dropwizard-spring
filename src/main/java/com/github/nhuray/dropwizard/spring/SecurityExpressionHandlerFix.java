@@ -7,7 +7,6 @@ import org.springframework.web.context.support.WebApplicationContextUtils;
 
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
-import java.util.Map;
 
 public class SecurityExpressionHandlerFix implements ServletContextListener {
 
@@ -17,8 +16,6 @@ public class SecurityExpressionHandlerFix implements ServletContextListener {
                 .getRequiredWebApplicationContext(sce.getServletContext());
         ApplicationContext parentContext = webApplicationContext.getParent();
         String[] beanNamesForType = parentContext.getBeanNamesForType(SecurityExpressionHandler.class);
-        Map<String, SecurityExpressionHandler> handlers = parentContext
-                .getBeansOfType(SecurityExpressionHandler.class);
 
         for (String name : beanNamesForType) {
             ((GenericApplicationContext)webApplicationContext).getBeanFactory().registerSingleton(name, parentContext.getBean(name));

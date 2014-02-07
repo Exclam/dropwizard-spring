@@ -5,6 +5,7 @@ import com.github.nhuray.dropwizard.spring.config.ConfigurationPlaceholderConfig
 import com.google.common.base.Preconditions;
 import com.sun.jersey.spi.inject.InjectableProvider;
 import com.yammer.dropwizard.ConfiguredBundle;
+import com.yammer.dropwizard.Service;
 import com.yammer.dropwizard.config.Bootstrap;
 import com.yammer.dropwizard.config.Configuration;
 import com.yammer.dropwizard.config.Environment;
@@ -18,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ConfigurableApplicationContext;
 
+import javax.servlet.ServletContextListener;
 import javax.ws.rs.Path;
 import javax.ws.rs.ext.Provider;
 import java.util.Map;
@@ -39,6 +41,9 @@ public class SpringBundle<T extends Configuration> implements ConfiguredBundle<T
     private ConfigurationPlaceholderConfigurer placeholderConfigurer;
     private boolean registerConfiguration;
     private boolean registerEnvironment;
+    private ServletContextListener webAppInitializer;
+    private Service<T> service;
+    private String dropWizardContextPath;
 
     /**
      * Creates a new SpringBundle to automatically initialize Dropwizard {@link Environment}
@@ -47,8 +52,19 @@ public class SpringBundle<T extends Configuration> implements ConfiguredBundle<T
      * @param context the application context to load
      */
     public SpringBundle(ConfigurableApplicationContext context) {
-        this(context, false, false, false);
+        this(context, true,true, true);
     }
+
+    public SpringBundle<T> enableWebApplication(Service<T> service, ServletContextListener webAppInitializer, String dropWizardContextPath) {
+        Preconditions.checkArgument(dropWizardContextPath != null, "The dropwizard context path has to be set.");
+        Preconditions.checkArgument(dropWizardContextPath.startsWith("/"), "The dropwizard context path has to start with an /.");
+        this.dropWizardContextPath = dropWizardContextPath;
+        //this.webAppEnabled = true;
+        this.service = service;
+        this.webAppInitializer = webAppInitializer;
+        return this;
+    }
+
 
     /**
      * Creates a new SpringBundle to automatically initialize Dropwizard {@link Environment}
@@ -60,7 +76,7 @@ public class SpringBundle<T extends Configuration> implements ConfiguredBundle<T
      * @param registerPlaceholder   resolve Dropwizard configuration as properties.
      */
     public SpringBundle(ConfigurableApplicationContext context, boolean registerConfiguration, boolean registerEnvironment, boolean registerPlaceholder) {
-        if (registerConfiguration || registerEnvironment  || registerPlaceholder) {
+        if (registerConfiguration || registerEnvironment || registerPlaceholder) {
             Preconditions.checkArgument(!context.isActive(), "Context must be not active in order to register configuration, environment or placeholder");
         }
         this.context = context;
@@ -80,7 +96,7 @@ public class SpringBundle<T extends Configuration> implements ConfiguredBundle<T
      */
     public SpringBundle(ConfigurableApplicationContext context, boolean registerConfiguration, boolean registerEnvironment, ConfigurationPlaceholderConfigurer placeholderConfigurer) {
         Preconditions.checkArgument(placeholderConfigurer != null, "PlaceholderConfigurer is required");
-        if (registerConfiguration || registerEnvironment  || placeholderConfigurer != null) {
+        if (registerConfiguration || registerEnvironment || placeholderConfigurer != null) {
             Preconditions.checkArgument(!context.isActive(), "Context must be not active in order to register configuration, environment or placeholder");
         }
         this.context = context;
@@ -90,8 +106,11 @@ public class SpringBundle<T extends Configuration> implements ConfiguredBundle<T
     }
 
     @Override
-    public void run(T configuration, Environment environment) throws Exception {
+    public void run(final T configuration, final Environment environment) throws Exception {
+
+
         // Register Dropwizard Configuration as a Bean Spring.
+
         if (registerConfiguration) registerConfiguration(configuration, context);
 
         // Register the Dropwizard environment
@@ -103,22 +122,29 @@ public class SpringBundle<T extends Configuration> implements ConfiguredBundle<T
         // Refresh context if is not active
         if (!context.isActive()) context.refresh();
 
+
+        environment.manage(new SpringContextManaged(context));
+
+
+
+
         // Initialize Dropwizard environment
         registerManaged(environment, context);
         registerLifecycle(environment, context);
-        registerServerLifecycleListeners(environment, context);
         registerTasks(environment, context);
         registerHealthChecks(environment, context);
         registerInjectableProviders(environment, context);
         registerProviders(environment, context);
         registerResources(environment, context);
-        environment.manage(new SpringContextManaged(context));
-    }
 
+        registerServerLifecycleListeners(environment, context);
+    }
 
     @Override
     public void initialize(Bootstrap<?> bootstrap) {
-        // nothing doing
+        if (dropWizardContextPath != null && webAppInitializer != null){
+            bootstrap.addCommand(new WebAppCommand<T>(service, context, webAppInitializer, dropWizardContextPath));
+        }
     }
 
     public ConfigurableApplicationContext getContext() {
@@ -183,19 +209,19 @@ public class SpringBundle<T extends Configuration> implements ConfiguredBundle<T
      * @param context     the Spring application context
      */
     private void registerServerLifecycleListeners(Environment environment, ConfigurableApplicationContext context) {
-      Map<String, ServerLifecycleListener> beansOfType = context.getBeansOfType(ServerLifecycleListener.class);
-      for (String beanName : beansOfType.keySet()) {
-        // Add serverLifecycleListener to Dropwizard environment
-        if (!beanName.equals(ENVIRONMENT_BEAN_NAME)) {
-          ServerLifecycleListener serverLifecycleListener = beansOfType.get(beanName);
-          environment.addServerLifecycleListener(serverLifecycleListener);
-          LOG.info("Registering serverLifecycleListener: " + serverLifecycleListener.getClass().getName());
+        Map<String, ServerLifecycleListener> beansOfType = context.getBeansOfType(ServerLifecycleListener.class);
+        for (String beanName : beansOfType.keySet()) {
+            // Add serverLifecycleListener to Dropwizard environment
+            if (!beanName.equals(ENVIRONMENT_BEAN_NAME)) {
+                ServerLifecycleListener serverLifecycleListener = beansOfType.get(beanName);
+                environment.addServerLifecycleListener(serverLifecycleListener);
+                LOG.info("Registering serverLifecycleListener: " + serverLifecycleListener.getClass().getName());
+            }
         }
-      }
     }
 
 
-  /**
+    /**
      * Register {@link Task}s in Dropwizard {@link Environment} from Spring application context.
      *
      * @param environment the Dropwizard environment
@@ -312,8 +338,8 @@ public class SpringBundle<T extends Configuration> implements ConfiguredBundle<T
      */
     private void registerPlaceholder(Environment environment, T configuration, ConfigurableApplicationContext context) {
         ConfigurableListableBeanFactory beanFactory = context.getBeanFactory();
-      final ObjectMapper objectMapper = environment.getObjectMapperFactory().build();
-      placeholderConfigurer.setObjectMapper(objectMapper);
+        final ObjectMapper objectMapper = environment.getObjectMapperFactory().build();
+        placeholderConfigurer.setObjectMapper(objectMapper);
         placeholderConfigurer.setConfiguration(configuration);
         beanFactory.registerSingleton(PLACEHOLDER_BEAN_NAME, placeholderConfigurer);
         beanFactory.registerSingleton(OBJECT_MAPPER_BEAN_NAME, objectMapper);
