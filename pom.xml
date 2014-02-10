@@ -71,6 +71,11 @@
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>com.github.exclam</groupId>
+            <artifactId>dropwizard-spring-mvc</artifactId>
+            <version>0.4.0-SNAPSHOT</version>
+        </dependency>
 
         <!-- Compile Dependencies -->
         <dependency>
