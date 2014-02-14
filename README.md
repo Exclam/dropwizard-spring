@@ -122,14 +122,19 @@ In order to run the application besides a SpringMVC application you have to modi
         AnnotationConfigApplicationContext applicationContext = new AnnotationConfigApplicationContext();
         applicationContext.register(AppConfiguration.class);
         bootstrap.addBundle(new SpringBundle<FrontConfiguration>(applicationContext)
-                .enableWebApplication(this, new WebAppInitializer(), "/api"));
+                .enableWebApplication(this, instantiateWebAppInitializers(), "/api"));
+    }
+
+    private List<WebApplicationInitializer> instantiateWebAppInitializers() {
+        List<WebApplicationInitializer> webApplicationInitializers = new ArrayList<>();
+        webApplicationInitializers.add(new SecurityWebApplicationInitializer());
+        webApplicationInitializers.add(new WebAppInitializer());
+        return webApplicationInitializers;
     }
     ...
 
 ```
 
- - The webAppInitializer has to implement the ServletContextListener interface and call its onStartup-method within this interface.
-    - here the springSecurityFilterChain should be included.
  - A root application context should not be set. It is done in our service.
  - The WebConfiguration.class is your Configuration class for the WebApp, which is annotated with @EnableWebMvc
     - in this configuration the Controller should be defined. (eg. by component scan)
@@ -138,25 +143,8 @@ WebAppInitializer:
 ```java
 
     public class WebAppInitializer extends
-        AbstractAnnotationConfigDispatcherServletInitializer implements
-        ServletContextListener {
+            AbstractAnnotationConfigDispatcherServletInitializer {
 
-        final Logger log = LoggerFactory.getLogger(WebAppInitializer.class);
-
-        @Override
-        public void contextInitialized(ServletContextEvent servletContextEvent) {
-            try {
-                ServletContext servletContext = servletContextEvent.getServletContext();
-                onStartup(servletContext);
-                /* Add the Spring Security filter. */
-                servletContext.addFilter("springSecurityFilterChain",
-                        new DelegatingFilterProxy()).addMappingForUrlPatterns(null,
-                        false, "/*");
-            } catch (ServletException e) {
-                log.error("Failed to initialize web application", e);
-                System.exit(0);
-            }
-        }
         @Override
         protected Class<?>[] getRootConfigClasses() {
             return null;
@@ -171,20 +159,22 @@ WebAppInitializer:
         protected String[] getServletMappings() {
             return new String[]{"/"};
         }
-
-        @Override
-        public void contextDestroyed(ServletContextEvent servletContextEvent) {
-        }
-
-        /**
-         * Overrided to squelch a meaningless log message when embedded.
-         */
-        @Override
-        protected void registerContextLoaderListener(ServletContext servletContext) {
-        }
     }
 
 ```
+
+ - The security web app initializer is a spring standard for registering the springSecurityFilterChain.
+
+SecurityWebApplicationInitializer:
+```java
+
+   public class SecurityWebApplicationInitializer
+           extends AbstractSecurityWebApplicationInitializer {
+   }
+
+```
+
+
 ## JSP Servlet security tags
  Due to the fact, that it is not possible to get a list of beans of a generic type from the parent of an application context
  by calling the getBeansOfType(Type) method, we added a fix in case the JSP security tags library is included into the project.

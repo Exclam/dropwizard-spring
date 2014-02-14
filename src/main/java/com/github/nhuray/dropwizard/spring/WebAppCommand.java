@@ -20,11 +20,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.util.ClassUtils;
+import org.springframework.web.WebApplicationInitializer;
 import org.springframework.web.context.WebApplicationContext;
-import org.springframework.web.context.support.GenericWebApplicationContext;
+import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
 
+import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
+import javax.servlet.ServletException;
 import java.io.IOException;
+import java.util.List;
 
 public class WebAppCommand<T extends Configuration> extends EnvironmentCommand<T> {
     public static final String AUTHORIZE_TAG_CLASS_NAME = "org.springframework.security.taglibs.authz.AbstractAuthorizeTag";
@@ -34,13 +38,14 @@ public class WebAppCommand<T extends Configuration> extends EnvironmentCommand<T
 
     private final Class<T> configurationClass;
     private ConfigurableApplicationContext applicationContext;
+    private List<WebApplicationInitializer> webAppInitializers;
     private String dropWizardContextPath;
-    private ServletContextListener webAppInitializer;
 
-    public WebAppCommand(Service<T> service, ConfigurableApplicationContext applicationContext, ServletContextListener webAppInitializer, String dropWizardContextPath) {
+    public WebAppCommand(Service<T> service, ConfigurableApplicationContext applicationContext, List<WebApplicationInitializer> webAppInitializers, String dropWizardContextPath) {
         super(service, "webapp", "Runs the Dropwizard service as an Web Application HTTP server");
-        this.webAppInitializer = webAppInitializer;
+
         this.applicationContext = applicationContext;
+        this.webAppInitializers = webAppInitializers;
         this.dropWizardContextPath = dropWizardContextPath;
         this.configurationClass = service.getConfigurationClass();
     }
@@ -69,7 +74,7 @@ public class WebAppCommand<T extends Configuration> extends EnvironmentCommand<T
         logBanner(environment.getName(), log);
         try {
             // run Spring main app
-            if (!applicationContext.isActive()) applicationContext.refresh();
+            //if (!applicationContext.isActive()) applicationContext.refresh();
 
             // run the web app with parent application context
             HandlerCollection handlerCollection = (HandlerCollection) server.getHandler();
@@ -113,11 +118,11 @@ public class WebAppCommand<T extends Configuration> extends EnvironmentCommand<T
         webApp.setInitParameter("org.eclipse.jetty.servlet.Default.dirAllowed",
                 "false");
 
+
         /* Create the root web application applicationContext and set it as a servlet
          * attribute so the dispatcher servlet can find it. */
-        GenericWebApplicationContext webApplicationContext = new GenericWebApplicationContext();
+        AnnotationConfigWebApplicationContext webApplicationContext = new AnnotationConfigWebApplicationContext();
         webApplicationContext.setParent(applicationContext);
-
         webApp.setAttribute(
                 WebApplicationContext.ROOT_WEB_APPLICATION_CONTEXT_ATTRIBUTE,
                 webApplicationContext);
@@ -126,7 +131,24 @@ public class WebAppCommand<T extends Configuration> extends EnvironmentCommand<T
          * Set the attributes that the Metrics servlets require.  The Metrics
          * servlet is added in the WebAppInitializer.
          */
-        webApp.addEventListener(webAppInitializer);
+        webApp.addEventListener(new ServletContextListener() {
+
+            @Override
+            public void contextInitialized(ServletContextEvent sce) {
+                for (WebApplicationInitializer webAppInitializer : webAppInitializers) {
+                    try {
+                        webAppInitializer.onStartup(sce.getServletContext());
+                    } catch (ServletException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+
+            @Override
+            public void contextDestroyed(ServletContextEvent sce) {
+
+            }
+        });
 
         if (ClassUtils.isPresent(AUTHORIZE_TAG_CLASS_NAME, this.getClass().getClassLoader())){
             webApp.addEventListener(new SecurityExpressionHandlerFix());

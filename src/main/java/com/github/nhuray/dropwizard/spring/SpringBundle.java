@@ -18,10 +18,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.web.WebApplicationInitializer;
 
-import javax.servlet.ServletContextListener;
 import javax.ws.rs.Path;
 import javax.ws.rs.ext.Provider;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -41,7 +42,7 @@ public class SpringBundle<T extends Configuration> implements ConfiguredBundle<T
     private ConfigurationPlaceholderConfigurer placeholderConfigurer;
     private boolean registerConfiguration;
     private boolean registerEnvironment;
-    private ServletContextListener webAppInitializer;
+    List<WebApplicationInitializer> webApplicationInitializers;
     private Service<T> service;
     private String dropWizardContextPath;
 
@@ -55,13 +56,13 @@ public class SpringBundle<T extends Configuration> implements ConfiguredBundle<T
         this(context, true,true, true);
     }
 
-    public SpringBundle<T> enableWebApplication(Service<T> service, ServletContextListener webAppInitializer, String dropWizardContextPath) {
+    public SpringBundle<T> enableWebApplication(Service<T> service, List<WebApplicationInitializer> webApplicationInitializers, String dropWizardContextPath) {
         Preconditions.checkArgument(dropWizardContextPath != null, "The dropwizard context path has to be set.");
         Preconditions.checkArgument(dropWizardContextPath.startsWith("/"), "The dropwizard context path has to start with an /.");
         this.dropWizardContextPath = dropWizardContextPath;
         //this.webAppEnabled = true;
         this.service = service;
-        this.webAppInitializer = webAppInitializer;
+        this.webApplicationInitializers = webApplicationInitializers;
         return this;
     }
 
@@ -142,8 +143,9 @@ public class SpringBundle<T extends Configuration> implements ConfiguredBundle<T
 
     @Override
     public void initialize(Bootstrap<?> bootstrap) {
-        if (dropWizardContextPath != null && webAppInitializer != null){
-            bootstrap.addCommand(new WebAppCommand<T>(service, context, webAppInitializer, dropWizardContextPath));
+        if (dropWizardContextPath != null && webApplicationInitializers != null){
+
+            bootstrap.addCommand(new WebAppCommand<T>(service, context, webApplicationInitializers, dropWizardContextPath));
         }
     }
 
