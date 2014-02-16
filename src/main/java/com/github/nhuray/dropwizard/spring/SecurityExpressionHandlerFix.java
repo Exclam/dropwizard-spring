@@ -1,7 +1,6 @@
 package com.github.nhuray.dropwizard.spring;
 
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.security.access.expression.SecurityExpressionHandler;
 import org.springframework.web.context.support.WebApplicationContextUtils;
 
@@ -18,7 +17,7 @@ public class SecurityExpressionHandlerFix implements ServletContextListener {
         String[] beanNamesForType = parentContext.getBeanNamesForType(SecurityExpressionHandler.class);
 
         for (String name : beanNamesForType) {
-            ((GenericApplicationContext)webApplicationContext).getBeanFactory().registerSingleton(name, parentContext.getBean(name));
+//            ((GenericApplicationContext)webApplicationContext).getBeanFactory().registerSingleton(name, parentContext.getBean(name));
         }
     }
 
