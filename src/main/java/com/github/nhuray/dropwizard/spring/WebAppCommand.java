@@ -113,7 +113,7 @@ public class WebAppCommand<T extends Configuration> extends EnvironmentCommand<T
         webApp.setContextPath("/");
         String war = new ClassPathResource("/webapp").getURI().toString();
         webApp.setWar(war);
-
+        webApp.setDescriptor("WEB-INF/web.xml");
         /* Disable directory listings if no index.html is found. */
         webApp.setInitParameter("org.eclipse.jetty.servlet.Default.dirAllowed",
                 "false");
